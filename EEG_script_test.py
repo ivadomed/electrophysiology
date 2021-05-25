@@ -50,24 +50,23 @@ for subject in subjects:
     fname = os.path.join(data_path, subject, 'RestingState_Blinks_epo.fif')
     epochs = mne.read_epochs(fname, proj=True, preload=True, verbose=None)
 
-    epochs = epochs[0:10]
+    if len(epochs) < 20:  # Only take into account the cases when the algorithm "PROBABLY" detects blinks correctly
+        subject = subject.lower() + "01"  # BIDS compliance
 
-    subject = subject.lower() + "01"
+        #eo.plot_image(picks=[frontalEOGChannel])
 
-    #eo.plot_image(picks=[frontalEOGChannel])
+        ## Do some preprocessing on the epochs - jitter the center so the model doesn't learn the position
+        epochs_preprocessed = epochs.crop(tmin=-0.4+np.random.random()*0.1, tmax=0.40+np.random.random()*0.1, include_tmax=True)
 
-    ## Do some preprocessing on the epochs - jitter the center so the model doesn't learn the position
-    epochs_preprocessed = epochs.crop(tmin=-0.4+np.random.random()*0.1, tmax=0.40+np.random.random()*0.1, include_tmax=True)
+        # Check if resampling is needed
+        epochs_preprocessed = epochs_preprocessed.resample(100)
 
-    # Check if resampling is needed
-    epochs_preprocessed = epochs_preprocessed.resample(100)
+        # Create bids folder
+        bids_path = mne_bids.BIDSPath(subject=subject, root=export_folder)
 
-    # Create bids folder
-    bids_path = mne_bids.BIDSPath(subject=subject, root=export_folder)
+        # Use the raw object that the trials came from in order to build the BIDS tree
+        mne_bids.write_raw_bids(fake_raw, bids_path, overwrite=True, verbose=True)
 
-    # Use the raw object that the trials came from in order to build the BIDS tree
-    mne_bids.write_raw_bids(fake_raw, bids_path, overwrite=True, verbose=True)
-
-    # Export trials into .nii files
-    export_epoch_to_nifti_small.run_export(epochs_preprocessed, ch_type, annotated_event_for_gt, bids_path)
+        # Export trials into .nii files
+        export_epoch_to_nifti_small.run_export(epochs_preprocessed, ch_type, annotated_event_for_gt, bids_path)
 
