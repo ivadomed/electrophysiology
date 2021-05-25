@@ -18,10 +18,13 @@ node = platform.node()
 if "beluga" in node:
     data_path = "/home/knasioti/projects/rrg-gdumas85/data/HBN/EPO/"
     export_folder = '/home/knasioti/projects/rrg-gdumas85/knasioti/test_BIDS'
+    fake_raw_fname = "/home/knasioti/projects/rrg-gdumas85/data/HBN/RAW.fif"
+
 
 elif "acheron" in node:
     data_path = "/home/nas/Consulting/ivadomed-EEG/HBN/EPO/"
     export_folder = '/home/nas/Desktop/test_BIDS'
+    fake_raw_fname = "/home/nas/Consulting/ivadomed-EEG/RAW.fif"
 
 else:
     raise NameError("need to specify a path where the HBN dataset is stored")
@@ -31,8 +34,8 @@ else:
 subjects = [os.path.basename(x) for x in glob.glob(os.path.join(data_path, "*"))]
 
 # Utilize info from the raw files - THIS IS NOT IMPLEMENTED FROM GUILLAUME'S FILES - FAKE IT
-fake_raw_fname = "/home/nas/Consulting/ivadomed-EEG/RAW.fif"
 fake_raw = mne.io.read_raw_fif(fake_raw_fname)
+
 # Assign line frequency - Required for BIDS export
 #fake_raw.info['line_freq'] = 60
 
