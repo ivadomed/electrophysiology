@@ -5,6 +5,7 @@ import os
 import export_epoch_to_nifti_small
 import numpy as np
 import platform
+import random
 
 try:
     import mne
@@ -43,9 +44,13 @@ annotated_event_for_gt = '998'  # This is the event that will be used to create 
                                     # 999 Heartbeats
                                     # 998 Blinks
 
+# Randomize subjects - this will help when submitting multiple jobs in Beluga
+
 # Select channel type to create the topographies on
 ch_type = 'eeg'
 
+n_skipped_subjects = 0
+iSubject = 1
 for subject in subjects:
 
     frontalEOGChannel = 'E22'
@@ -53,7 +58,7 @@ for subject in subjects:
     fname = os.path.join(data_path, subject, 'RestingState_Blinks_epo.fif')
     epochs = mne.read_epochs(fname, proj=True, preload=True, verbose=None)
 
-    if len(epochs) < 20:  # Only take into account the cases when the algorithm "PROBABLY" detects blinks correctly
+    if len(epochs) < 50:  # Only take into account the cases when the algorithm "PROBABLY" detects blinks correctly
         subject = subject.lower() + "01"  # BIDS compliance
 
         #eo.plot_image(picks=[frontalEOGChannel])
@@ -72,4 +77,10 @@ for subject in subjects:
 
         # Export trials into .nii files
         export_epoch_to_nifti_small.run_export(epochs_preprocessed, ch_type, annotated_event_for_gt, bids_path)
-
+        print("Just finished subject: " + str(iSubject))
+        print("Already skipped: " + str(n_skipped_subjects) + " subjects")
+        iSubject += 1
+    else:
+        n_skipped_subjects += 1
+        print("Just finished subject: " + str(iSubject))
+        print("Already skipped: " + str(n_skipped_subjects) + " subjects")
