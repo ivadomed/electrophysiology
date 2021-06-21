@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import numpy as np
-import copy
 import sys
 try:
     import mne
@@ -33,7 +32,21 @@ def export_time_to_file(outputfolder, iEpoch, times):
 
 
 
-def trial_export(trial, ch_type, outputfolder, iEpoch, suffix):
+def trial_export(trial, ch_type, outputfolder, iEpoch, suffix, df_recording):
+
+    # Hack to accommodate ivadomed derivative selection:
+    # https://github.com/ivadomed/ivadomed/blob/master/ivadomed/loader/utils.py # L812
+    if iEpoch > 9 and iEpoch < 20:
+        iEpoch = "A" + str(iEpoch)
+    elif iEpoch > 19 and iEpoch < 30:
+        iEpoch = "B" + str(iEpoch)
+    elif iEpoch > 29 and iEpoch < 40:
+        iEpoch = "C" + str(iEpoch)
+    elif iEpoch > 39 and iEpoch < 50:
+        iEpoch = "D" + str(iEpoch)
+    elif iEpoch > 49 and iEpoch < 60:
+        iEpoch = "D" + str(iEpoch)
+
 
     # Export times to a file and compare with the rest of the files
     export_time_to_file(outputfolder, iEpoch, trial.times)
@@ -45,42 +58,51 @@ def trial_export(trial, ch_type, outputfolder, iEpoch, suffix):
 
 
     # Create a nifti file for the epoch
-    data_nifti = np.zeros((130, 130, len(trial.times)))  # This is for size=1
-    #data_nifti = np.zeros((705, 710, len(times)))  # This is for size=5
+    data_nifti = np.zeros((200, 220, len(trial.times)))
+    #data_nifti = np.zeros((705, 710, len(times)))
 
     # TODO - LOCAL-GLOBAL THRESHOLD
     # Define the GLOBAL limits for the colormaps - If this is not set, the colorbar limits would be different per slice
     # However, if there are local (in-time) artifacts - these values get affected - discuss solutions
-    #vmin = np.min(trial.data[picks, :])
-    #vmax = np.max(trial.data[picks, :])
-    vmin = None
-    vmax = None
+    vmin = np.min(trial.data[picks, :])
+    vmax = np.max(trial.data[picks, :])
     for iTime in range(len(trial.times)):
-        plt.figure(100)
-        fig = trial.plot_topomap(trial.times[iTime],
+        plt.figure(100, figsize=(4, 3), dpi=80)
+        #plt.figure(100)
+        '''fig = trial.plot_topomap(trial.times[iTime], ch_type=ch_type,
                                  vmin=vmin, vmax=vmax, show_names=False,
-                                 size=1, extrapolate='head',  # TODO - play with size
+                                 size=1, extrapolate='auto',  # TODO - play with size
                                  colorbar=False, cmap='Greys',
                                  outlines=None, contours=0,
-                                 show=False, sensors=False)  # res = int selects res
+                                 show=True, sensors=False)  # res = int selects res
 
-        fig.canvas.draw()
+        mne.viz.plot_topomap(data, pos, vmin=None, vmax=None, cmap=None, sensors=True, res=64, axes=None, names=None,
+                             show_names=False, mask=None, mask_params=None, outlines='head', contours=6,
+                             image_interp='bilinear', show=True, onselect=None, extrapolate='auto', sphere=None,
+                             border='mean', ch_type='eeg') '''
+        fig = mne.viz.plot_topomap(trial.data[picks, iTime], pos, vmin=vmin, vmax=vmax, cmap="Greys", sensors=False,
+                                   res=64, axes=None, names=None, show_names=False, mask=None, mask_params=None,
+                                   outlines=None, contours=0, image_interp='bilinear', show=False, onselect=None,
+                                   extrapolate='auto', sphere=None, border='mean', ch_type=ch_type)
 
-        inverted_coordinates = fig.axes[0].transData.transform(pos)
+        fig[0].figure.canvas.draw()
+
+        # Get in pixel coordinates the positions of the channels
+        inverted_coordinates = fig[0].figure.axes[0].transData.transform(pos)
 
         # Remove the title that shows the time
         # fig.axes[0].title = ''  # THIS DOESNT SEEM TO WORK - EXPLORE
 
         # Now we can save it to a numpy array.
-        data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)  # np.uint16 changed the shape of the matrix - TODO
+        data = np.frombuffer(fig[0].figure.canvas.tostring_rgb(), dtype=np.uint8)  # np.uint16 changed the shape of the matrix - TODO
         # Make 2D
-        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        data = data.reshape(fig[0].figure.canvas.get_width_height()[::-1] + (3,))
 
         # Invert black and white
         data = util.invert(data)
 
         # Close figure to save memory
-        plt.close(fig)
+        plt.close(fig[0].figure)
         # Convert RGB to GRAY
         data = color.rgb2gray(data)
 
@@ -92,7 +114,7 @@ def trial_export(trial, ch_type, outputfolder, iEpoch, suffix):
         # left for most image software, so flip the y-coordinates
         # ALSO: height is controlled by ROWS in a matrix
 
-        width, height = fig.canvas.get_width_height()
+        width, height = fig[0].figure.canvas.get_width_height()
         y = height - y
 
         # Make a dot to indicate the correct positioning
@@ -102,10 +124,10 @@ def trial_export(trial, ch_type, outputfolder, iEpoch, suffix):
             print("ORDER OF X,Y NEED TO BE FINALIZED AFTER THE AFFINE MATRIX IS DONE")
 
         # CROP SIDES - THE COORDINATES OF THE ELECTRODES SHOULD BE SAVED AFTER CROPPING
-        crop_from_top = 50
-        crop_from_bottom = -40
-        crop_from_left =10
-        crop_from_right = -10
+        crop_from_top = 30
+        crop_from_bottom = -10
+        crop_from_left =50
+        crop_from_right = -50
         data = data[crop_from_top:crop_from_bottom, crop_from_left:crop_from_right]
 
         # Export channel coordinates after cropping - these values just represent pixel coordinates now
@@ -135,35 +157,34 @@ def trial_export(trial, ch_type, outputfolder, iEpoch, suffix):
                        [0, 0, 1, 0],
                        [0, 0, 0, 1]])
 
-    #affine = np.array([[0, 0, 1, 0],
-    #                   [1, 0, 0, 0],
-    #                   [0, -1, 0, 0],
-    #                  [0, 0, 0, 1]])
-
-    # affine = np.array([[0, -1, 0, 0],
-    #                  [-1, 0, 0, 0],
-    #                   [0, 0, -1, 0],
-    #                   [0, 0, 0, 1]])
-
     # Create nested directory if not created already
     Path(outputfolder).mkdir(parents=True, exist_ok=True)
 
     # Get subject name
-    subject = os.path.basename(os.path.dirname(outputfolder))
+    subject = "sub-" + df_recording['Subject']
+    session = "ses-" + df_recording['Run']
 
     # Export each "evoked" file / trial=epoch into a separate nifti
     out = Nifti1Image(data_nifti, affine=affine)
-    save(out, os.path.join(outputfolder, subject + "_epoch" + str(iEpoch) + suffix + '.nii.gz'))
+    save(out, os.path.join(outputfolder, subject + "_" + session + "_epoch" + str(iEpoch) + suffix + '.nii.gz'))
 
 
-def export_single_epoch_to_nifti(iEpoch, single_epoch, bids_path, annotated_event_for_gt, ch_type):
+def export_single_epoch_to_nifti(iEpoch, single_epoch, bids_path, annotated_event_for_gt, ch_type, df_recording):
     # Export only if the file doesnt exist
     # if not os.path.exists(os.path.join(outputfolder, 'epoch' + str(iEpoch) + '.nii.gz')):
+
+    # Add a jitter here so the ground truth is not always at the same spot
+    # TODO - generalize the edge-values
+    single_epoch.crop(tmin=single_epoch.times[0]+0.1 + np.random.random() * 0.1,
+                      tmax=single_epoch.times[-1]-0.1 + np.random.random() * 0.1, include_tmax=True)
+
     # Create an evoked object for each epoch.
     # The reasoning for this is that evoked objects already have a 2D topographic plot implemented
+    #class mne.Evoked(fname, condition=None, proj=True, kind='average', allow_maxshield=False, verbose=None)
     trial = single_epoch.average()
+
     suffix = ''
-    trial_export(trial, ch_type, os.path.join(bids_path.directory, 'anat'), iEpoch, suffix)
+    trial_export(trial, ch_type, os.path.join(bids_path.directory, 'anat'), iEpoch, suffix, df_recording)
 
     # First zero everything on each "slice"
     trial.data = np.zeros_like(trial.data)
@@ -186,10 +207,9 @@ def export_single_epoch_to_nifti(iEpoch, single_epoch, bids_path, annotated_even
         else:
             zero_time_index = np.where(np.diff(np.sign(single_epoch.times)))[0] + 1
 
-
-        # Adding zero to the annotation
-        selected_samples = range(int(zero_time_index - length_of_annotation_in_samples/2 - np.random.randint(0, 5)),
-                                 int(zero_time_index + length_of_annotation_in_samples/2 + np.random.randint(0, 5)))
+        # Centering around zero from the annotation = TODO - this only works for annotations that are around the event
+        selected_samples = range(int(zero_time_index - length_of_annotation_in_samples/2),
+                                 int(zero_time_index + length_of_annotation_in_samples/2))
 
         # TODO - Select ON WHICH CRITERION CHANNELS SHOULD BE ANNOTATED
         have_annotated_channels = False
@@ -213,13 +233,15 @@ def export_single_epoch_to_nifti(iEpoch, single_epoch, bids_path, annotated_even
 
         suffix = '_event' + annotated_event_for_gt
 
-        subject_id = os.path.basename(bids_path.directory)
-        derivatives_output = os.path.join(os.path.dirname(bids_path.directory),
-                                          'derivatives', 'labels', subject_id, 'anat')
-        trial_export(trial, ch_type, derivatives_output, iEpoch, suffix)
+        subject_id = "sub-" + df_recording['Subject']
+        session = "ses-" + df_recording['Run']
+
+        derivatives_output = os.path.join(bids_path.root,
+                                          'derivatives', 'labels', subject_id, session, 'anat')
+        trial_export(trial, ch_type, derivatives_output, iEpoch, suffix, df_recording)
 
 
-def run_export(epochs, ch_type, annotated_event_for_gt, bids_path):
+def run_export(epochs, ch_type, annotated_event_for_gt, bids_path, df_recording):
 
     # Export the MNE events samples to a csv file
     selected_events = epochs.events[epochs.events[:, 2] == epochs.event_id[annotated_event_for_gt], :]
@@ -237,11 +259,11 @@ def run_export(epochs, ch_type, annotated_event_for_gt, bids_path):
         print('Starting parallel processing')
         pool = mp.Pool(mp.cpu_count() - 2)
         results = [pool.apply_async(export_single_epoch_to_nifti,
-                                    args=(iEpoch, epochs[iEpoch], bids_path, annotated_event_for_gt, ch_type))
+                                    args=(iEpoch, epochs[iEpoch], bids_path, annotated_event_for_gt, ch_type, df_recording))
                    for iEpoch in range(len(epochs))]
         pool.close()
         pool.join()
         print('Just finished parallel processing')
     else:
         for iEpoch in range(len(epochs)):
-            export_single_epoch_to_nifti(iEpoch, epochs[iEpoch], bids_path, annotated_event_for_gt, ch_type)
+            export_single_epoch_to_nifti(iEpoch, epochs[iEpoch], bids_path, annotated_event_for_gt, ch_type, df_recording)
